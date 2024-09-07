@@ -10,13 +10,29 @@ Subsurface environments like the Edgar Experimental Mine harbor unique microbial
 
 ## Data Collection
 
-Samples were collected from the Edgar Experimental Mine at two time points: June 2023 and June 2024. The locations within the mine included:
+Samples were collected from the Edgar Experimental Mine at two time points: June 2023 and June 2024 in a few various locations such as:
 - Cave walls & boreholes 
 - Rubber tubing throughout the Mine
 - Subterranean water
 
-These samples were subjected to 16S rRNA gene analysis to explore the microbial diversity and community structure across different substrates and time points.
+<div align="center">
+  <table>
+    <tr>
+      <td align="center">
+        <img src="https://github.com/user-attachments/assets/20291a35-8ded-42fd-973f-c6d83c50c579" alt="Image 1" width="150"><br>
+        <p>Figure 1: Example of cave flooring from 2024 data</p>
+      </td>
+      <td align="center">
+        <img src="https://github.com/user-attachments/assets/3644aaad-1c13-4ce7-a56b-c3e538bf10a9" alt="Image 2" width="150"><br>
+        <p>Figure 2: Example of boreholes from 2023 data</p>
+      </td>
+    </tr>
+  </table>
+</div>
 
+Both sets of samples were initially processed using the ZymoBIOMICS DNA Miniprep Kit. The DNA was then quantified and analyzed with the Qubit double-stranded DNA (dsDNA) high-sensitivity assay. To amplify the 16S rRNA gene, we employed the AcuuStar II PCR ToughMix and qScript XLT One-Step RT-PCR methodology, ensuring high yield and purity suitable for downstream analysis, as outlined by Parada et al. (2016).
+
+For sequencing, the 2024 samples were processed with the Oxford Mk1B MinION nanopore, while the 2023 samples were sequenced at the Microbiome Core Facility, Duke Center for Genomic and Computational Biology, utilizing Illumina next-generation sequencing (NGS) technology.
 
 
 ## Methodology
