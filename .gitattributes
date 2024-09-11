@@ -1,2 +1,2 @@
-﻿*.rmd linguist-language=R
-dist/* linguist-vendored=false
+﻿*.Rmd linguist-language=R
+
