@@ -34,27 +34,36 @@ Both sets of samples were initially processed using the ZymoBIOMICS DNA Miniprep
 
 For sequencing, the 2024 samples were processed with the Oxford Mk1B MinION nanopore, while the 2023 samples were sequenced at the Microbiome Core Facility, Duke Center for Genomic and Computational Biology, utilizing Illumina next-generation sequencing (NGS) technology.
 
+# Data Processing and Analysis
+### Data Preprocessing
+- **Quality filtering and trimming of raw reads** using DADA2.
+- **OTU picking and taxonomic assignment** using the SILVA database with the DADA2 pipeline.
 
-## Methodology
+### Diversity Analysis
+- **Alpha diversity** (e.g., Shannon index) and **beta diversity** (e.g., Bray-Curtis dissimilarity) were calculated using `phyloseq` and `vegan`.
+  
+### Statistical Analysis
 
-### Data Processing and Analysis
-The following pipeline was used to process and analyze the 16S rRNA gene sequencing data:
+- **Differential abundance analysis** was performed using `DESeq2` to identify taxa significantly associated with different sample types.
 
-1. **Data Preprocessing**
-   - Quality filtering and trimming of raw reads using [Tool X].
-   - OTU picking and taxonomic assignment using [Tool Y].
+### Functional Predictions
 
-2. **Diversity Analysis**
-   - Alpha diversity (e.g., Shannon index) and beta diversity (e.g., Bray-Curtis dissimilarity) were calculated using [Tool Z].
+- **Functional pathway predictions** were inferred using **PICRUSt** (Phylogenetic Investigation of Communities by Reconstruction of Unobserved States).
+  
+### Metagenomic Analysis
+- For the 2023 data, the DADA2 pipeline was used for 16S rRNA gene analysis, focusing on identifying exact sequence variants (ASVs) and performing taxonomic assignments to characterize microbial communities based on their genetic sequences.
+- - For the 2024 data, downstream metagenomic analysis was conducted using EPI2ME What's In My Pot (WIMP).
+---
 
-3. **Statistical Analysis**
-   - Differential abundance analysis was performed using [Tool A] to identify taxa significantly associated with different sample types.
+# Tools and Software
 
-### Tools and Software
-- **Tool X**: Used for quality control and trimming.
-- **Tool Y**: Used for OTU picking and taxonomic assignment.
-- **Tool Z**: Used for diversity analysis.
-- **Tool A**: Used for statistical analysis.
+- **DADA2**: Used for quality control, trimming, and taxonomic assignment.
+- **phyloseq & vegan**: Used for diversity analysis.
+- **DESeq2**: Used for differential abundance analysis.
+- **PICRUSt**: Used for functional predictions of microbial communities.
+- **EPI2ME**: Used for metagenomic analysis and community functional profiling.
+
+---
 
 ## Results
 
