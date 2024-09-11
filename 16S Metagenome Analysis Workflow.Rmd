@@ -1,0 +1,345 @@
+---
+title: "16s DADA2 Analysis"
+output: html_notebook
+---
+
+# Load all dependent R packages
+``` {r}
+install.packages(
+  "microViz",
+  repos = c(davidbarnett = "https://david-barnett.r-universe.dev", getOption("repos"))
+)
+```
+
+
+```{r}
+library(phyloseq)
+library(dada2)
+library(DECIPHER)
+library(microbiome)
+library(ampvis2)
+library(tidyverse)
+library(decontam)
+library(vegan)
+library(breakaway)
+library(phangorn)
+library(microViz)
+```
+
+
+# FILTER & TRIM (adjust path name)
+
+```{r}
+miseq_path <- "ADJUST PATH NAME"
+list.files(miseq_path)
+```
+
+
+Filtering out low quality sequence reads by looking at quality scores.
+
+```{r}
+# Sorting forward and reverse reads.
+fnFs <- sort(list.files(miseq_path, pattern = "_R1_001.fastq"))
+fnRs <- sort(list.files(miseq_path, pattern = "_R2_001.fastq"))
+
+sampleNames <- sapply(strsplit(fnFs, "_"), `[`, 1)
+
+fnFs <- file.path(miseq_path, fnFs)
+fnRs <- file.path(miseq_path, fnRs)
+```
+
+```{r}
+#Sanity Check
+fnFs[1:4]
+fnRs[1:4]
+```
+
+```{r}
+#Use the quality score profiles to double check and compare to FastQC/MultiQC
+plotQualityProfile(fnFs[1:4])
+plotQualityProfile(fnRs[1:4])
+```
+
+```{r}
+#Defining the filepath for the trimmed reads, make sure working directory matches
+filt_path <- file.path(miseq_path, "filtered")
+
+if (!file_test("-d", filt_path)) dir.create(filt_path)
+filtFs <- file.path(filt_path, paste0(sampleNames, "_F_filt.fastq.gz"))
+filtRs <- file.path(filt_path, paste0(sampleNames, "_R_filt.fastq.gz"))
+```
+
+Filtering the sequences
+
+```{r}
+out <- filterAndTrim(fnFs, filtFs, fnRs, filtRs,
+                     trimLeft = c(40,40), trimRight = c(20,20), # These numbers were chosen based on our primer sequences that were attached to our reads, you can change them to see how it effects how many reads make it through the rest of the pipeline
+              maxN = 0, maxEE = c(2, 2), truncQ = 4, rm.phix = TRUE, matchIDs = TRUE,
+              compress = TRUE, multithread = TRUE)
+head(out)
+```
+
+```{r}
+plotQualityProfile(filtFs[1:4])
+plotQualityProfile(filtRs[1:4])
+```   
+
+# DEREPLICATION
+
+```{r, echo=FALSE}
+derepFs <- derepFastq(filtFs, verbose = TRUE)
+derepRs <- derepFastq(filtRs, verbose = TRUE)
+
+names(derepFs) <- sampleNames
+names(derepRs) <- sampleNames
+```
+
+```{r}
+errF <- learnErrors(filtFs, multithread = TRUE)
+errR <- learnErrors(filtRs, multithread = TRUE)
+```
+
+```{r}
+plotErrors(errF)
+plotErrors(errR)
+```
+
+```{r}
+#This removes any final errors before merging
+dadaFs <- dada(derepFs, err = errF, multithread = TRUE)
+dadaRs <- dada(derepRs, err = errR, multithread = TRUE)
+```
+
+```{r}
+dadaFs[[1]]
+dadaRs[[1]]
+```
+
+
+# CONSTRUCTING ASV SEQUENCE TABLE & REMOVE CHIMERAS
+
+Forming a DADA2 version of an ASV table.
+
+```{r}
+mergers <- mergePairs(dadaFs, derepFs, dadaRs, derepRs)
+seqtabAll <- makeSequenceTable(mergers[!grepl("Mock", names(mergers))])
+table(nchar(getSequences(seqtabAll)))
+```
+
+```{r}
+seqtabNoC <- removeBimeraDenovo(seqtabAll, verbose = TRUE)
+```
+
+Additional steps to verify sanity check - should not lose too much of sample.
+
+```{r}
+sum(seqtabNoC) / sum(seqtabAll)
+```
+
+```{r}
+getN <- function(x) sum(getUniques(x))
+track <- cbind(out, sapply(dadaFs, getN), sapply(dadaRs, getN), sapply(mergers, getN), rowSums(seqtabNoC))
+colnames(track) <- c("input", "filtered", "denoisedF", "denoisedR", "merged", "nonchim")
+rownames(track) <- sampleNames
+head(track) #Make sure to check the read count in the "nonchim" category. Blanks should have a low number of reads, samples must still have a reasonable amount of reads
+```
+
+
+
+# ASSIGNING TAXONOMY
+
+Using formatted databases to assign taxonomy to samples and sequences.
+
+```{r}
+# Set reference databse Silva 138.1 prokaryotic SSU was the one used for my original process
+
+fastaRef <- ""
+
+taxTab <- assignTaxonomy(seqtabNoC, refFasta = fastaRef, multithread = TRUE)
+unname(head(taxTab))
+```
+
+
+# PHYLOGENETIC TREE
+
+
+```{r}
+seqs <- getSequences(seqtabNoC)
+names(seqs) <- seqs
+alignment <- AlignSeqs(DNAStringSet(seqs), anchor = NA, verbose = FALSE) # Took ~4.5 minutes
+```
+
+Using the Phangorn package to help construct the tree
+
+```{r}
+phangAlign <- phyDat(as(alignment, "matrix"), type = "DNA")
+dm <- dist.ml(phangAlign)
+treeNJ <- NJ(dm) 
+fit <- pml(treeNJ, data = phangAlign)
+fitGTR <- update(fit, k = 4, inv = 0.2)
+fitGTR <- optim.pml(fitGTR, model = "GTR", optInv = TRUE, optGamma = TRUE,      #This step will take a LONG time....
+        rearrangement = "stochastic", control = pml.control(trace = 1))
+detach("package:phangorn", unload=TRUE)
+```
+
+
+
+
+## MAKING THE PHYLOSEQ OBJECT
+
+Pulls in metadata from collected samples, set path again
+
+```{r}
+samdf <- read.csv("/PATH/metadata.csv", header = TRUE)
+all(rownames(seqtabAll) %in% samdf$SampleID) #should come out TRUE
+```
+
+```{r}
+rownames(samdf) <- samdf$SampleID
+samdf <- samdf[rownames(seqtabAll), c(1:ncol(samdf))]
+```
+
+Making the phyloseq object
+
+```{r}
+ps <- phyloseq(otu_table(seqtabNoC, taxa_are_rows = FALSE),
+               sample_data(samdf),
+               tax_table(taxTab),
+              phy_tree(fitGTR$tree))    # Only add this into the phyloseq function if you are interested in including a tree
+ps
+```
+
+This will rename the table to include ASV's instead of OTU's
+
+```{r}
+dna <- Biostrings::DNAStringSet(taxa_names(ps))
+names(dna) <- taxa_names(ps)
+ps <- merge_phyloseq(ps, dna)
+taxa_names(ps) <- paste0("ASV", seq(ntaxa(ps)))
+ps
+
+refseq(ps) #to visualize your different sequences when compared to one another.
+```
+
+
+
+
+
+Removing Mitochondria and Chloroplast
+
+```{r}
+# Now removing the mitochondria and chloroplast samples
+filterMitochondria <- "Mitochondria"
+filterChloroplast <- "Chloroplast"
+
+ps <- subset_taxa(ps, !Family %in% filterMitochondria)
+ps <- subset_taxa(ps, !Order %in% filterChloroplast)
+
+# Checking to see if they were removed
+#View(ps_meta@tax_table@.Data)
+```
+
+Clear out the NAs through MicroViz to best guess classification.
+```{r}
+table(tax_table(ps)[, "Phylum"], exclude = NULL)
+```
+
+
+```{r}
+ps <- microViz::tax_fix(ps)
+```
+
+
+```{r}
+sample_sums(ps)
+
+# Display number of reads in each sample
+ps_clean <- subset_samples(ps, !SampleID %in% c())
+
+sample_sums(ps_clean)
+```
+
+
+
+# ALPHA DIVERSITY
+
+```{r}
+plot_richness(ps_clean, measures = "Observed")
+```
+
+
+
+
+# BETA DIVERSITY
+
+```{r}
+ps_rare <- rarefy_even_depth(ps_clean, sample.size = 2736, rngseed = 69)
+ps_transform <- transform_sample_counts(ps_clean, function(otu) otu/sum(otu))
+ps_transform_hell <- microbiome::transform(ps_transform, transform = "hellinger", target = 'sample')
+
+nmds.bray <- ordinate(ps_rare, method = "PCoA", distance = "bray")
+
+plot_ordination(ps_rare, nmds.bray, type = "taxa", color = "Phylum", title = "NMDS ordination Bray-Curtis Dissimilarity")
+```
+
+
+
+# ABUNDANCE ANALYSIS
+
+Bar plot using phyloseq
+```{r}
+plot_bar(ps_clean) # This does not autoatically normalize your data
+```
+
+Ampvis2 Heatmap
+```{r}
+# Use the 'phyloseq_to_ampvis2.R' function to convert to the necessary object
+
+amp_heatmap()   # Look on the ampvis website for guides on how to fill this function in.
+```
+
+
+
+```{r}
+library(biomformat)
+
+# Converting ASV table to a biom file
+asv_table <- otu_table(ps_clean)  # Extract the OTU table from the phyloseq object
+asv_biom <- make_biom(asv_table)
+write_biom(asv_biom, "table.biom")
+
+library(Biostrings)
+
+seqs <- getSequences(seqtabNoC)
+seqs <- DNAStringSet(seqs)
+writeXStringSet(seqs, "seqs.fna")
+
+
+metadata <- (sample_data(ps_clean))
+write.table(metadata, file = "metadata.tsv", sep = "\t", quote = FALSE, row.names = TRUE)
+
+
+
+
+```
+
+```{r}
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+BiocManager::install("Biostrings")
+
+library(Biostrings)
+library(phyloseq)
+# Extract ASV sequences
+asv_sequences <- getSequences(seqtabAll)  # Replace seqtabNoC with whatever sequence table variable
+asv_dna <- DNAStringSet(asv_sequences)
+
+# detail names for ASVs if wanted
+names(asv_dna) <- paste0("ASV", seq_along(asv_dna))
+
+writeXStringSet(asv_dna, filepath = "asv_sequences.fna")
+
+
+
+```
+
